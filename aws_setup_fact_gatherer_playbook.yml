@@ -1,0 +1,51 @@
+- name: Playbook to gather fact and export them
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - playbook_vars/{{ global_var_environment }}/global_vars.yml
+  tasks:
+
+### Using the ec2_eip_info module to pull back from AWS all the info related to the EIP
+### using the tag:Name filter we are able to identify the EIP resource we are aiming at.
+### Whatever was retreived is assigned to the variable facts_ngw_eip_info.
+    - name: Gather || Get Info about EIP for NAT Gateway
+      amazon.aws.ec2_eip_info:
+        filters:
+          "tag:Name": "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_ngw_eip_name_sufx }}"
+        region: "{{ global_var_region }}"
+      register: facts_ngw_eip_info
+
+### using set fact to export all variable declared under it
+    - name: Gather || Export all collected facts/info
+      ansible.builtin.set_fact:
+        exported_ngw_eip_info: "{{ facts_ngw_eip_info }}"
+
+### Using the aws_caller_info module to retrieve account details, especially the account id
+    - name: Gather || Get AWS Account information
+      amazon.aws.aws_caller_info:
+        region: "{{ global_var_region }}"
+      register: facts_aws_caller_info
+
+### Using ec2_vpc_net_info to pull vpc information back from AWS
+    - name: Gather || information about the vpc
+      amazon.aws.ec2_vpc_net_info:
+        region: "{{ global_var_region }}"
+        filters:
+          "tag:Name": "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_name_sufx }}"
+      register: facts_vpc_info
+
+### Using cloudwatchlogs_log_group_info module to pull our log group information back
+    - name: Gather || information about cloudwatch log group info
+      amazon.aws.cloudwatchlogs_log_group_info:
+        log_group_name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_cloudwatch_loggroup_sufx }}"
+        region: "{{ global_var_region }}"
+      register: facts_vpc_cloudwatchlogs_group_info
+
+### using set fact to export all variable declared under it
+    - name: Gather || Export all collected facts/info
+      ansible.builtin.set_fact:
+        exported_ngw_eip_info: "{{ facts_ngw_eip_info }}"
+        exported_facts_aws_caller_info: "{{ facts_aws_caller_info }}"
+        exported_facts_vpc_id: "{{ facts_vpc_info.vpcs[0].id }}"
+        exported_facts_vpc_cloudwatchlogs_group_arn: "{{ facts_vpc_cloudwatchlogs_group_info.log_groups[0].arn }}"

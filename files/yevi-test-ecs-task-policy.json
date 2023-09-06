@@ -1,0 +1,48 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage"
+            ],
+            "Resource": [
+                "arn:aws:ecr:us-east-1:489920847756:repository/yevi-test-ecr-repo/java-app", 
+                "arn:aws:ecr:us-east-1:489920847756:repository/yevi-test-ecr-repo/golang-app" 
+                
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:us-east-1:489920847756:log-group:yevi-test-log-group:*" 
+     
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameters",
+                "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+                "arn:aws:secretsmanager:us-east-1:489920847756:secret:yevi-test-sensitive-details-jPsnnz", 
+                "arn:aws:ssm:us-east-1:489920847756:parameter/yevi-test*" 
+                ]
+           
+        }
+    ]
+}

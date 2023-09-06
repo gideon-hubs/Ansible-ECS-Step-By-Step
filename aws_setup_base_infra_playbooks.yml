@@ -1,0 +1,192 @@
+---
+
+- name: Execute Ansible from localhost using aws python sdk
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - playbook_vars/{{ global_var_environment }}/global_vars.yml
+    - playbook_vars/{{ global_var_environment }}/aws_setup_base_infra_vars.yml
+  tasks:
+
+### Using the module `ec2_vpc_net` to create the vpc using variables
+### from the global variables with tags when the variable aws_setup_base_vpc_create
+### is true (which is default meaning I don't have to set it if I want it true)
+    - name: Creating the AWS VPC
+      amazon.aws.ec2_vpc_net:
+        name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_name_sufx }}"
+        cidr_block: "{{ global_var_vpc_cidr }}"
+        region: "{{ global_var_region }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_name_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      register: reg_vpc_info
+      when: aws_setup_base_vpc_create | default(true)
+
+    -  debug: var=reg_vpc_info  
+
+### Using the module `ec2_vpc_subnet` to create the subnets destined to be
+### public subnets using variables from the global_vars file. This uses a looping
+### technics to create the subnets making us use only 1 entry to create 3 subnets
+### This is created only when the variable aws_setup_base_vpc_public_subnet_details is defined
+    - name: Creating public subnets
+      amazon.aws.ec2_vpc_subnet:
+        cidr: "{{ item.cidr }}"
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        az: "{{ item.az_zone }}"
+        state: "present"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_public_subnet_sufx }}"
+          ENV: "{{ global_var_environment }}"
+          AZName: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_public_subnet_sufx }}-{{ item.az_zone }}"
+      loop: "{{ aws_setup_base_vpc_public_subnet_details }}"
+      register: reg_all_public_subnet_info
+      when: aws_setup_base_vpc_public_subnet_details is defined
+
+    - debug: var=reg_all_public_subnet_info  
+
+### Using the module `ec2_vpc_subnet` to create a single private subnet that should be
+### associated with the AZ A. Uses variables from the global_vars file. This is only
+### created if the variable aws_setup_base_vpc_private_subnet_a_create is true.
+    - name: Creating private subnet A
+      amazon.aws.ec2_vpc_subnet:
+        cidr: "{{ global_var_vpc_private_subnet_a }}"
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        az: "{{ global_var_region }}a"
+        state: "present"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}"
+          ENV: "{{ global_var_environment }}"
+          AZName: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}-{{ global_var_region }}a"
+      register: reg_private_subnet_a_info
+      when: aws_setup_base_vpc_private_subnet_a_create | default(true)
+
+### Using the module `ec2_vpc_subnet` to create a single private subnet that should be
+### associated with the AZ B. Uses variables from the global_vars file. This is only
+### created if the variable aws_setup_base_vpc_private_subnet_b_create is true.
+    - name: Creating private subnet B
+      amazon.aws.ec2_vpc_subnet:
+        cidr: "{{ global_var_vpc_private_subnet_b }}"
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        az: "{{ global_var_region }}b"
+        state: "present"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}"
+          ENV: "{{ global_var_environment }}"
+          AZName: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}-{{ global_var_region }}b"
+      register: reg_private_subnet_b_info
+      when: aws_setup_base_vpc_private_subnet_b_create | default(true)
+
+### Using the module `ec2_vpc_subnet` to create a single private subnet that should be
+### associated with the AZ C. Uses variables from the global_vars file. This is only
+### created if the variable aws_setup_base_vpc_private_subnet_c_create is true.
+    - name: Creating private subnet C
+      amazon.aws.ec2_vpc_subnet:
+        cidr: "{{ global_var_vpc_private_subnet_c }}"
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        az: "{{ global_var_region }}c"
+        state: "present"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}"
+          ENV: "{{ global_var_environment }}"
+          AZName: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_vpc_private_subnet_sufx }}-{{ global_var_region }}c"
+      register: reg_private_subnet_c_info
+      when: aws_setup_base_vpc_private_subnet_c_create | default(true)
+
+### Using the module `ec2_vpc_igw` to create teh internet gateway for the VPC
+### the variables used is from the global_vars file and will only create if the
+### variable aws_setup_base_vpc_igw_create is set to true.
+    - name: Creating the Internet Gateway
+      amazon.aws.ec2_vpc_igw:
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-igw"
+          ENV: "{{ global_var_environment }}"
+      register: reg_internet_gateway_info
+      when: aws_setup_base_vpc_igw_create | default(true)
+
+### With the module `ec2_vpc_route_table`, not only we are creating the route table
+### but as well the route itself and the association between the subnet and the
+### route table. This route table because associated with the internet gateway
+### makes the subnet associated with it a public subnet. Created when aws_setup_base_vpc_public_route_table_create is true
+    - name: Creating public route table
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        subnets: "{{ reg_all_public_subnet_info.results |
+                    map(attribute='subnet') |
+                    map(attribute='id') }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ reg_internet_gateway_info.gateway_id }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-public-route-table"
+          ENV: "{{ global_var_environment }}"
+      register: reg_public_route_table_info
+      when: aws_setup_base_vpc_public_route_table_create | default(true)
+
+### Using the `ec2_eip` module to create the Elastic IP, ie a static public IP to be used
+### able to pull from the internet and also be able to be used by the aws session manager.
+### Created when aws_setup_base_eip_4_natgw_create is true
+    - name: Creating EIP for the NAT Gateway
+      amazon.aws.ec2_eip:
+        region: "{{ global_var_region }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-ngw-eip"
+          ENV: "{{ global_var_environment }}"
+      register: reg_eip_4_natgw_info
+      when: aws_setup_base_eip_4_natgw_create | default(true)
+
+### Using the `ec2_vpc_nat_gateway` module to create the NAT gateway to allow private subnets to be
+### able to pull from the internet and also be able to be used by the aws session manager.
+### This is created in a single subnet of the VPC. Created when aws_setup_base_natgw_create is true
+    - name: Creating the NAT Gateway
+      amazon.aws.ec2_vpc_nat_gateway:
+        subnet_id: "{{ reg_all_public_subnet_info.results[0].subnet.id }}"
+        allocation_id: "{{ reg_eip_4_natgw_info.allocation_id }}"
+        region: "{{ global_var_region }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-nat-gateway"
+          ENV: "{{ global_var_environment }}"
+      register: reg_nat_gateway_info
+      when: aws_setup_base_natgw_create | default(true)
+
+    - debug: var=reg_nat_gateway_info 
+
+### Using `ec2_vpc_route_table` module to create a route table and tie the route
+### which uses the NAT Gateway to the subnets. This makes the subnet associated the private subnets.
+### This is created when aws_setup_base_vpc_private_route_table_create is true
+    - name: Creating private route table
+      amazon.aws.ec2_vpc_route_table:
+        vpc_id: "{{ reg_vpc_info.vpc.id }}"
+        region: "{{ global_var_region }}"
+        subnets:
+          - "{{ reg_private_subnet_a_info.subnet.id }}"
+          - "{{ reg_private_subnet_b_info.subnet.id }}"
+          - "{{ reg_private_subnet_c_info.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ reg_nat_gateway_info.nat_gateway_id }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-private-route-table"
+          ENV: "{{ global_var_environment }}"
+      register: reg_private_route_table_info
+      when: aws_setup_base_vpc_private_route_table_create | default(true)
+
+### Using the `cloudwatchlogs_log_group` module to create a log group to hosts
+### all the logs from our application layer
+    - name: Creating CloudWatch log group
+      amazon.aws.cloudwatchlogs_log_group:
+        log_group_name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_cloudwatch_loggroup_sufx }}"
+        region: "{{ global_var_region }}"
+        retention: 30
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_cloudwatch_loggroup_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      register: reg_cloudwatch_log_group_info
+      when: aws_setup_base_cloudwatch_log_group_create | default(true)

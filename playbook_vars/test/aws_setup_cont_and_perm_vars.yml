@@ -1,0 +1,15 @@
+aws_setup_security_db_secretsmanager_create: true
+aws_setup_security_ecr_repositories_details:
+  - { 
+      name: "{{ global_var_project }}-{{ global_var_environment }}-ecr-repo/java-app" 
+  }
+  - { 
+      name: "{{ global_var_project }}-{{ global_var_environment }}-ecr-repo/golang-app" 
+  }
+
+aws_setup_security_custom_iam_policy_template_generate: true
+aws_setup_security_iam_trust_policy_file_sufx: "ecs-task-trust-policy.json"
+aws_setup_security_iam_ecs_task_policy_template_sufx: "ecs-task-policy.json.j2"
+aws_setup_security_iam_ecs_task_policy_file_sufx: "ecs-task-policy.json"  
+aws_setup_security_vpc_lb_secgroup_create: true
+aws_setup_security_vpc_app_secgroup_create: true

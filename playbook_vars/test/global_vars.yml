@@ -1,0 +1,26 @@
+global_var_region: us-east-1
+global_var_project: yevi
+global_var_vpc_name_sufx: "vnet"
+global_var_vpc_cidr_root: "172.18"
+global_var_vpc_cidr: "{{ global_var_vpc_cidr_root }}.0.0/16"
+global_var_vpc_public_subnet_a: "{{ global_var_vpc_cidr_root }}.0.0/24"
+global_var_vpc_public_subnet_b: "{{ global_var_vpc_cidr_root }}.1.0/24"
+global_var_vpc_public_subnet_c: "{{ global_var_vpc_cidr_root }}.2.0/24"
+global_var_vpc_private_subnet_a: "{{ global_var_vpc_cidr_root }}.10.0/24"
+global_var_vpc_private_subnet_b: "{{ global_var_vpc_cidr_root }}.11.0/24"
+global_var_vpc_private_subnet_c: "{{ global_var_vpc_cidr_root }}.12.0/24"
+global_var_vpc_public_subnet_sufx: "public-subnet"
+global_var_vpc_private_subnet_sufx: "private-subnet"
+global_var_cloudwatch_loggroup_sufx: "log-group"
+global_var_ngw_eip_name_sufx: "ngw-eip"
+global_var_db_secretsmanager_sufx: "sensitive-details"
+global_var_iam_task_role_sufx: "task-role"
+global_var_custom_iam_policy_sufx: "custom-policy"
+
+global_var_lb_http_port: 80
+global_var_lb_https_port: 443
+global_var_app_from_port: 8000
+global_var_app_to_port: 10000
+
+global_var_secgroup_app_sufx: "app-secgroup"
+global_var_secgroup_elb_sufx: "lb-secgroup"

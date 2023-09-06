@@ -1,0 +1,143 @@
+---
+
+- name: Importing Fact Gatherer playbook
+  ansible.builtin.import_playbook: aws_setup_fact_gatherer_playbook.yml
+
+- name: Playbook to create container and permission resources
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - playbook_vars/{{ global_var_environment }}/global_vars.yml
+    - playbook_vars/{{ global_var_environment }}/aws_setup_cont_and_perm_vars.yml
+    - playbook_vars/{{ global_var_environment }}/vault/{{ global_var_environment }}_variables.vault
+  tasks:
+
+### Using the secretsmanager_secret module to create a json secret with values from the ansible vault.
+### The name of the secrets and its tag name Name are the same.
+### The creation of this resource is conditioned by the variable aws_setup_security_db_secretsmanager_create.
+    - name: Creating credentials in AWS Secrets Manager
+      community.aws.secretsmanager_secret:
+        name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_db_secretsmanager_sufx }}"
+        region: "{{ global_var_region }}"
+        description: json document with details on db connection
+        json_secret:
+          username: "{{ vault_db_username }}"
+          password: "{{ vault_db_password }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_db_secretsmanager_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      register: reg_db_secretsmanager_info
+      when: aws_setup_security_db_secretsmanager_create | default(true)
+
+### Using ecs_ecr module to create the registry needed for all the containers we are getting ready to deploy.
+### The use of loop construct helps using only one entry to create multiple resource sahring the same context.
+### The creaion of this resouce is conditioned by the existence of the variable aws_setup_security_ecr_repositories_details
+    - name: Creating container registry repository
+      community.aws.ecs_ecr:
+        name: "{{ item.name }}"
+        region: "{{ global_var_region }}"
+        scan_on_push: true
+        state: present
+      register: reg_ecr_repositories_info
+      when: aws_setup_security_ecr_repositories_details is defined
+      loop: "{{ aws_setup_security_ecr_repositories_details }}"
+
+### Using template module to generate the actualy policy file out of a jinja2 template for the ECS task permission
+### as you could see the arn of the secrets manager is composed based on a known pattern using account id.
+    - name: Creating the custom policy json file
+      ansible.builtin.template:
+        src: "templates/{{ global_var_project }}-{{ aws_setup_security_iam_ecs_task_policy_template_sufx }}"
+        dest: "files/{{ global_var_project }}-{{ global_var_environment }}-{{ aws_setup_security_iam_ecs_task_policy_file_sufx }}"
+        mode: 0644
+      vars:
+        vars_template_ecr_arns: "{{ reg_ecr_repositories_info.results | map(attribute='repository') | map(attribute='repositoryArn' ) | list }}"
+        vars_template_log_arns:
+          - "{{ hostvars.localhost.exported_facts_vpc_cloudwatchlogs_group_arn }}"
+        vars_template_secretstore_arns:
+          - "{{ reg_db_secretsmanager_info.secret.arn }}"
+          - "arn:aws:ssm:\
+            {{ global_var_region }}:\
+            {{ hostvars.localhost.exported_facts_aws_caller_info.account }}:\
+            parameter/{{ global_var_project }}-\
+            {{ global_var_environment }}*"
+      register: reg_custom_policy_file_generation
+      when: aws_setup_security_custom_iam_policy_template_generate | default(true)
+
+### Using iam_managed_policy to create a policy to be attached to the role used by ECS tasks
+    - name: Creating a custom IAM policy
+      community.aws.iam_managed_policy:
+        policy_name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_custom_iam_policy_sufx }}"
+        region: "{{ global_var_region }}"
+        policy: "{{ lookup('ansible.builtin.file',vars_custom_policy_file) }}"
+      vars:
+        vars_custom_policy_file: "files/{{ global_var_project }}-{{ global_var_environment }}-{{ aws_setup_security_iam_ecs_task_policy_file_sufx }}"
+      register: reg_custom_iam_policy
+      when: aws_setup_security_custom_iam_policy_create | default(true)
+
+ ### Using iam_role module to create a role for the ecs task but also to assign permission created
+ ### through the policy created just above
+    - name: Creating ECS Task IAM Role
+      community.aws.iam_role:
+        name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_iam_task_role_sufx }}"
+        region: "{{ global_var_region }}"
+        assume_role_policy_document: "{{ lookup('ansible.builtin.file', vars_task_assume_policy ) }}"
+        purge_policies: true
+        managed_policies:
+          - "{{ reg_custom_iam_policy.policy.arn }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_iam_task_role_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      vars:
+        vars_task_assume_policy: "files/{{ global_var_project }}-{{ aws_setup_security_iam_trust_policy_file_sufx }}"
+      register: reg_iam_task_role
+      when: aws_setup_security_iam_role_create | default(true)
+
+### Using the module ec2_security_group to create the security group for the load balancer. It creates 2 rules:
+### opens port http (80) to the worl and as port port https (443) to the world
+### The vpc id is retrieved from the exported_factss_vpc_id collected and exported by the fact gatherer playbook.
+    - name: Creating Load Balancer security group
+      amazon.aws.ec2_security_group:
+        vpc_id: "{{ hostvars.localhost.exported_facts_vpc_id }}"
+        name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_secgroup_elb_sufx }}"
+        region: "{{ global_var_region }}"
+        description: "Allowing 0.0.0.0/0 to the LB port"
+        rules:
+          - proto: tcp
+            from_port: "{{ global_var_lb_http_port }}"
+            to_port: "{{ global_var_lb_http_port }}"
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: "{{ global_var_lb_https_port }}"
+            to_port: "{{ global_var_lb_https_port }}"
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_secgroup_elb_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      register: reg_lb_secgroup_info
+      when: aws_setup_security_vpc_lb_secgroup_create | default(true)
+
+### Using the module ec2_security_group to  create the security group for the applicaiton, i.e. the containers
+### This uses the variable registered above for the creation of the security group for the load balancer as
+### source security group. So it opens the same port http and https to the load balancer
+### The vpc id is retrieved from the exported_factss_vpc_id collected and exported by the fact gatherer playbook.
+    - name: Creating Application security group
+      amazon.aws.ec2_security_group:
+        vpc_id: "{{ hostvars.localhost.exported_facts_vpc_id }}"
+        name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_secgroup_app_sufx }}"
+        region: "{{ global_var_region }}"
+        description: "Allowing traffic from the LB and to self "
+        rules:
+          - proto: tcp
+            from_port: "{{ global_var_app_from_port }}"
+            to_port: "{{ global_var_app_to_port }}"
+            group_id: "{{ reg_lb_secgroup_info.group_id }}"
+          - proto: tcp
+            from_port: "{{ global_var_app_from_port }}"
+            to_port: "{{ global_var_app_to_port }}"
+            group_name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_secgroup_app_sufx }}"
+        tags:
+          Name: "{{ global_var_project }}-{{ global_var_environment }}-{{ global_var_secgroup_app_sufx }}"
+          ENV: "{{ global_var_environment }}"
+      register: reg_app_secgroup_info
+      when: aws_setup_security_vpc_app_secgroup_create | default(true)  

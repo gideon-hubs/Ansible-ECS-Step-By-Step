@@ -1,0 +1,59 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage"
+            ],
+            "Resource": [
+{% if vars_template_ecr_arns is defined %}
+    {% for arn in  vars_template_ecr_arns %}
+            "{{ arn }}"{% if not loop.last %},{% endif %}
+ 
+    {% endfor %}
+{% endif %}            
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+{% if vars_template_log_arns is defined %}
+    {% for arn in  vars_template_log_arns %}
+            "{{ arn }}"{% if not loop.last %},{% endif %}
+ 
+    {% endfor %}
+{% endif %} 
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameters",
+                "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+{% if vars_template_secretstore_arns is defined %}
+    {% for arn in  vars_template_secretstore_arns %}
+            "{{ arn }}"{% if not loop.last %},{% endif %}
+ 
+    {% endfor %}
+{% endif %}
+            ]
+           
+        }
+    ]
+}
